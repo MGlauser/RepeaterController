@@ -1,0 +1,22 @@
+{
+  "apps": [{
+    "name": "k7id",
+    "script": "npm",
+    "args": ["run", "start"],
+    "instances": 1,
+    "exec_mode": "fork",
+    "watch": true,
+    "ignore_watch": ["node_modules"],
+    "node_args": "",
+    "merge_logs": false,
+    "cwd": "/home/k7id/K7ID_controller",
+    "interpreter": "/home/k7id/.nvm/versions/node/v22.18.0/bin/node",
+    "env": {
+      "NODE_ENV": "production",
+      "NODE_OPTIONS": "--max-old-space-size=4096"
+    },
+    "output": "/home/k7id/.pm2/logs/k7id_out.log",
+    "error": "/home/k7id/.pm2/logs/k7id_error.log",
+    "log": "/home/k7id/.pm2/logs/k7id_combined.outerr.log"
+  }]
+}

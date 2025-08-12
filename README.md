@@ -1,0 +1,168 @@
+## Pi support packages:
+```
+sudo apt-get install festival festvox-kallpc16k festvox-us-slt-hts festvox-us1
+```
+
+## Get list of devices
+```
+aplay -l
+```
+Example shows Card 2, device 0 is the USB audio dongle.
+
+## Set ~/.festivalrc
+```
+;; Set the output device to the USB audio adapter (card 2, device 0)
+(set! output_device "hw:2,0")
+
+;; Set the default voice to us1_mbrola
+(set! voice_default 'voice_us1_mbrola)
+```
+
+### and to run on Pi
+```
+echo '(voice.list)' | festival
+echo '(voice_kal_diphone)' | festival
+echo '(Say "Hello sweetie")' | festival
+
+
+## GPIO Pins
+
+| Function              | GPIO Pin         | Notes                       |
+| --------------------- | ---------------- | --------------------------- |
+| TOR (Tone on Receive) | GPIO 17          | Input, HIGH = start decode  |
+| DTMF Q1–Q4            | GPIO 4, 5, 6, 13 | Input pins for DTMF nibble  |
+| DTMF Valid (Strobe)   | GPIO 27          | Rising edge triggers read   |
+| TX Key (PTT)          | GPIO 22          | Output to key transmitter   |
+| Door Sensor           | GPIO 18          | RCA jack Normally closed    |
+| DHT11 Temp/Humidity   | GPIO 23          | Input with special timing   |
+| Repeater Relay        | GPIO 25 (output) | Relay +13.8v via RCA jack   |
+
+## Watchdog signals and pins
+| Function       | Raspberry Pi GPIO | Arduino Pin Suggestion    |
+| -------------- | ----------------- | ------------------------- |
+| Watchdog Input | GPIO 24 (input)   | Arduino Output (e.g., D7) |
+| Watchdog Echo  | GPIO 26 (output)  | Arduino Input (e.g., D8)  |
+
+
+
+## Repeater control relay:
+
+Raspberry Pi GPIO (e.g. GPIO 25)
+        |
+      1kΩ
+        |
+      B |\
+         |   2N2222
+      C |----- Relay Coil → +V (e.g. 5V)
+         |
+        E
+        |
+       GND (Raspberry Pi GND and relay PSU GND must connect)
+
+Flyback diode:
+     -|<-
+     Across relay coil (cathode to +V side, anode to transistor side)
+
+
+=================================
+
+       6VAC Signal
+           ~
+           |
+           |----|>|----+---- R1 ----+-----> To ADC (e.g. MCP3008 CH0)
+          D1         |             |
+       (1N4148)      |             R2
+                     |             |
+                    GND           GND
+                    |
+                 +|| C1 (10µF)
+                    |
+                   GND
+
+## Angular SPA notes:
+
+. On the Angular Dashboard (Frontend)
+
+In your Angular SPA:
+Create a service method:
+
+// alert.service.ts
+getAlertLog(): Observable<string> {
+  return this.http.get<{ log: string }>('/api/alerts').pipe(
+    map(response => response.log)
+  );
+}
+
+Add a component view:
+
+<!-- alert-log.component.html -->
+<h2 class="text-xl font-bold mb-2">Alert Log</h2>
+<pre class="bg-gray-100 p-3 rounded text-sm max-h-96 overflow-auto">{{ alertLog }}</pre>
+
+Component logic:
+
+// alert-log.component.ts
+alertLog = '';
+
+ngOnInit() {
+  this.alertService.getAlertLog().subscribe(log => {
+    this.alertLog = log;
+  });
+}
+
+Add method to your alert service:
+
+// alert.service.ts
+acknowledgeAlerts(): Observable<{ message: string }> {
+  return this.http.post<{ message: string }>('/api/alerts/acknowledge', {});
+}
+
+3. Frontend: Alert log component update
+
+Add a button and method:
+
+<!-- alert-log.component.html -->
+<div class="mb-4 flex items-center justify-between">
+  <h2 class="text-xl font-bold">Alert Log</h2>
+  <button 
+    (click)="acknowledge()" 
+    class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+    Acknowledge Alerts
+  </button>
+</div>
+
+<pre class="bg-gray-100 p-3 rounded text-sm max-h-96 overflow-auto">{{ alertLog }}</pre>
+
+// alert-log.component.ts
+alertLog = '';
+
+ngOnInit() {
+  this.loadLog();
+}
+
+loadLog() {
+  this.alertService.getAlertLog().subscribe(log => {
+    this.alertLog = log;
+  });
+}
+
+acknowledge() {
+  this.alertService.acknowledgeAlerts().subscribe(() => {
+    // Optionally refresh log after acknowledgment
+    this.loadLog();
+  });
+}
+
+4. Bonus: Auto-refresh after acknowledgment
+
+You can also add a periodic refresh (e.g., every 1 min) to keep logs current:
+
+import { interval } from 'rxjs';
+
+ngOnInit() {
+  this.loadLog();
+
+  interval(60000).subscribe(() => {
+    this.loadLog();
+  });
+}

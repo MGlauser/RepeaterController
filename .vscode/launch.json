@@ -1,0 +1,38 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "tts",
+      "request": "launch",
+      "runtimeArgs": [
+        "run-script",
+        "test",
+        "Hello, sweetie",
+        "Tessa" // voice as arg[3]
+      ],
+      "runtimeExecutable": "npm",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "type": "node"
+    },
+    {
+      "name": "Launch Program with sudo",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "sudo", // Use sudo as the runtime executable
+      "runtimeArgs": [
+        "/home/k7id/.nvm/versions/node/v22.18.0/bin/node", // Pass the full path to the Node.js executable as the first argument to sudo
+        "--inspect-brk=9229", // Enable debugging on port 9229
+        "${workspaceFolder}/src/main.js" // Pass the main script as an argument to Node.js
+      ],
+      "console": "integratedTerminal", // Display output in the integrated terminal
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    },
+  ]
+}
