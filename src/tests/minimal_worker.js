@@ -5,9 +5,6 @@ import { initADC, readSensors } from "../sensor_reader.js";
 import { speak } from "../tts.js";
 import { startDTMFDecoder, stopDTMFDecoder } from '../dtmf_decoder.js';
 
-// Later, to stop
-// stopDTMFDecoder();
-
 let alertsEnabled = true; // Set to false to disable alerts
 let doorAlertActive = false;
 let doorAlertTimer = null;
@@ -23,7 +20,8 @@ const AC_VOLTAGE_HIGH = 125;
 const DC_VOLTAGE_LOW = 11.0;
 const DC_VOLTAGE_HIGH = 14.8;
 const ALERT_REPEAT_MS = 1000 * 60 * 2; // 1 minute 30 * 60 * 1000; // 30 minutes
-const REPEATER_ID = "K7ID, controler online... .";
+const REPEATER_RESET_TIMEOUT = 1000 * 60 * 2; // 2 minute timer.
+
 const TX_DELAY = 1000; // ms to wait after speaking to do something else.
 
 const repeaterPin = new Gpio(25, { mode: Gpio.OUTPUT });
@@ -40,9 +38,8 @@ const dtmfLookup = {
   4223: "RESET_REPEATER",
   4220: "REPEATER_LOW",
   4221: "REPEATER_HIGH",
-  4299: "SILENCE!",
   4111: "STATUS",
-  9999: "EXIT"
+  9999: "EXIT" // this RESTARTS the application because PM2 keeps it alive.
 };
 
 async function pollSensors() {
@@ -62,7 +59,7 @@ async function pollSensors() {
         await speak("Alert. Intrusion detected at shack door.");
         logAlert("DOOR OPENED - ALERT TRIGGERED");
         doorAlertTimer = setInterval(async () => {
-          await speak("Repeat alert. Intrusion detected at shack door.");
+          await speak("Repeating alert. Intrusion detected at shack door.");
           logAlert("DOOR ALERT REPEATED");
         }, ALERT_REPEAT_MS);
       }
@@ -151,7 +148,7 @@ startDTMFDecoder((code) => {
       setTimeout(async () => {
         repeaterPin.digitalWrite(1);
         await speak("Resetting repeater.");
-        setTimeout(() => repeaterPin.digitalWrite(0), 5000);
+        setTimeout(() => repeaterPin.digitalWrite(0), REPEATER_RESET_TIMEOUT);
       }, TX_DELAY);
       break;
 
@@ -193,13 +190,7 @@ startDTMFDecoder((code) => {
       alertsEnabled = false;
       setTimeout(async () => {
         await speak("Alerts have been disabled.");
-      }, TX_DELAY);
-      // NO BREAK as this is the same as ALERT_OFF
 
-    case "SILENCE!": // Acknowledge Alerts
-      alertsEnabled = false;
-
-      setTimeout(async () => {
         if (doorAlertActive || acVoltageAlertActive || dcVoltageAlertActive) {
           await speak("Alerts acknowledged. Shutting up.");
           logAlert("DTMF 'SILIENCE!' RECEIVED: ALERTS ACKNOWLEDGED");
@@ -241,9 +232,11 @@ startDTMFDecoder((code) => {
   }
 });
 
+
+
 // Send a random affirmation once at startup
 (async () => {
-  await speak(REPEATER_ID);
+  
   await speak(getRandomAffirmation());
   await pollSensors(); // set initial values
 

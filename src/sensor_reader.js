@@ -88,15 +88,20 @@ function readADC(channel) {
  * @returns {Promise<number>} scaled voltage in volts
  */
 async function readVoltage(channel, dividerRatio = 3.7, samples = 10) {
-  let sum = 0;
-  for (let i = 0; i < samples; i++) {
-    const voltage = await readADC(channel);
-    // console.log(`readVoltage channel ${channel} raw reading ${i + 1}: ${voltage}`);
-    sum += voltage;
+  try {
+    let sum = 0;
+    for (let i = 0; i < samples; i++) {
+      const voltage = await readADC(channel);
+      // console.log(`readVoltage channel ${channel} raw reading ${i + 1}: ${voltage}`);
+      sum += voltage;
+    }
+    const meanVoltage = sum / samples;
+    // console.log(`readVoltage channel ${channel} raw (mean value): ${meanVoltage}`);
+    return meanVoltage * dividerRatio;
+  } catch (err) {
+    console.error(err);
+    return -1;
   }
-  const meanVoltage = sum / samples;
-  // console.log(`readVoltage channel ${channel} raw (mean value): ${meanVoltage}`);
-  return meanVoltage * dividerRatio;
 }
 
 
@@ -126,7 +131,7 @@ async function readSensors() {
 
   const tempData = await readDHT();
   const door = doorPin.digitalRead();
- 
+
   let batteryVoltage = parseFloat(await readVoltage(BATTERY_CHANNEL, 4.096, 20)).toFixed(1);
   // console.log('batteryVoltage ', batteryVoltage);
   let acVoltage = Math.floor(await readVoltage(AC_CHANNEL, 44.0, 20)).toFixed(0);
