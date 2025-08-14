@@ -6,7 +6,7 @@
     "instances": 1,
     "exec_mode": "fork",
     "watch": true,
-    "ignore_watch": ["node_modules"],
+    "ignore_watch": ["node_modules", ".git", "*.log"],
     "node_args": "",
     "merge_logs": false,
     "cwd": "/home/k7id/K7ID_controller",
