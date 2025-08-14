@@ -10,7 +10,7 @@ export class FifoQueue {
    */
   enqueue(item, processor) {
     this.queue.push(item);
-    console.log(`Enqueued: ${item}. Current queue size: ${this.queue.length}`);
+    console.log(`Enqueued: ${JSON.stringify(item)}. Current queue size: ${this.queue.length}`);
     if (processor) {
       this.processAll(processor)
     }
@@ -31,14 +31,14 @@ export class FifoQueue {
 
     while (this.queue.length > 0) {
       const item = this.queue.shift(); // Remove the first item
-      console.log(`Processing: ${item}`);
+      console.log(`Processing: ${JSON.stringify(item)}`);
 
       try {
         // Simulate an asynchronous task (e.g., API call, database operation)
         await processor(item.content);
-        console.log(`Finished processing: ${item}`);
+        console.log(`Finished processing: ${JSON.stringify(item)}`);
       } catch (error) {
-        console.error(`Error processing ${item}: ${error}`);
+        console.error(`Error processing ${JSON.stringify(item)}: ${error}`);
       }
     }
 

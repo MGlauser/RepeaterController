@@ -57,7 +57,7 @@ export async function speak(text) {
 
 async function innerSpeak(message) {
   return new Promise((resolve, reject) => {
-    const text = message.content;
+    const text = message;
     console.log(`innerSpeak text: ${text}`);
     if (!text) return resolve();
     try {
@@ -83,14 +83,3 @@ async function innerSpeak(message) {
   });
 }
 
-// Listen for the 'speak-message' event and process the message using innerSpeak
-ttsQueue.on('speak-message', async (message, done) => {
-  try {
-    console.log(`event listener got: done: ${done}, message: ${message}`);
-    await innerSpeak(message);
-    done(); // Signal completion to the queue.
-  } catch (error) {
-    console.error('Error during speech synthesis:', error);
-    done(error); // Signal error to the queue
-  }
-});
