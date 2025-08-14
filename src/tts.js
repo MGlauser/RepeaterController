@@ -45,7 +45,7 @@ async function sendID(extra = '.') {
     idTimer = setTimeout(async () => {
       console.log('10 minute timer completed.');
       idTimer = null;
-    }, 1000 * 60 * 1); // 10 minutes
+    }, 1000 * 60 * 10); // 10 minutes
   }
 }
 

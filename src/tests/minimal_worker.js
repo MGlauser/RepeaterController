@@ -13,13 +13,14 @@ let lastDoorState = null;
 let sensorData = {};
 let acVoltageAlertActive = false;
 let dcVoltageAlertActive = false;
-let voltageAlertTimer = null;
+let acVoltageAlertTimer = null;
+let dcVoltageAlertTimer = null;
 
-const AC_VOLTAGE_LOW = 105;
-const AC_VOLTAGE_HIGH = 125;
+const AC_VOLTAGE_LOW = 100;
+const AC_VOLTAGE_HIGH = 128;
 const DC_VOLTAGE_LOW = 11.0;
 const DC_VOLTAGE_HIGH = 14.8;
-const ALERT_REPEAT_MS = 1000 * 60 * 2; // 1 minute 30 * 60 * 1000; // 30 minutes
+const ALERT_REPEAT_MS = 1000 * 60 * 30; // 30 minutes
 const REPEATER_RESET_TIMEOUT = 1000 * 60 * 2; // 2 minute timer.
 
 const TX_DELAY = 1000; // ms to wait after speaking to do something else.
@@ -81,10 +82,10 @@ async function pollSensors() {
         data.acVoltage < AC_VOLTAGE_LOW || data.acVoltage > AC_VOLTAGE_HIGH;
 
       if (acVoltageAbnormal && !acVoltageAlertActive) {
-        await speak(`Warning. Line voltage abnormal.  ${data.acVoltage} Volts`);
-        logAlert(`Line VOLTAGE ALERT TRIGGERED: ${data.acVoltage}V`);
+        await speak(`Warning. Line voltage abnormal.`);
+        logAlert(`Line VOLTAGE ALERT TRIGGERED: ${data.acVoltage} Volts`);
         acVoltageAlertActive = true;
-        voltageAlertTimer = setInterval(async () => {
+        acVoltageAlertTimer = setInterval(async () => {
           await speak(`Repeat warning. Line voltage abnormal. ${data.acVoltage} Volts`);
           logAlert(`Line VOLTAGE ALERT REPEATED: ${data.acVoltage} Volts`);
         }, ALERT_REPEAT_MS);
@@ -92,9 +93,9 @@ async function pollSensors() {
 
       if (!acVoltageAbnormal && acVoltageAlertActive) {
         acVoltageAlertActive = false;
-        if (voltageAlertTimer) {
-          clearInterval(voltageAlertTimer);
-          voltageAlertTimer = null;
+        if (acVoltageAlertTimer) {
+          clearInterval(acVoltageAlertTimer);
+          acVoltageAlertTimer = null;
         }
         const msg = `Line VOLTAGE NORMALIZED: ${data.acVoltage} Volts - ALERT CLEARED`;
         await speak(msg);
@@ -106,9 +107,9 @@ async function pollSensors() {
         data.batteryVoltage < DC_VOLTAGE_LOW || data.batteryVoltage > DC_VOLTAGE_HIGH;
       if (dcVoltageAbnormal && !dcVoltageAlertActive) {
         dcVoltageAlertActive = true;
-        await speak(`Warning. Battery voltage abnormal. ${data.batteryVoltage} Volts`);
+        await speak(`Warning. Battery voltage abnormal.`);
         logAlert(`Battery VOLTAGE ALERT TRIGGERED: ${data.batteryVoltage} Volts`);
-        voltageAlertTimer = setInterval(async () => {
+        dcVoltageAlertTimer = setInterval(async () => {
           await speak("Repeat warning. Battery voltage abnormal.");
           const msg = `Battery VOLTAGE ALERT REPEATED: ${data.batteryVoltage} Volts`
           await speak(msg);
@@ -118,9 +119,9 @@ async function pollSensors() {
 
       if (!dcVoltageAbnormal && dcVoltageAlertActive) {
         dcVoltageAlertActive = false;
-        if (voltageAlertTimer) {
-          clearInterval(voltageAlertTimer);
-          voltageAlertTimer = null;
+        if (dcVoltageAlertTimer) {
+          clearInterval(dcVoltageAlertTimer);
+          dcVoltageAlertTimer = null;
         }
         const msg = `BATTERY VOLTAGE NORMALIZED: ${data.batteryVoltage} Volts - ALERT CLEARED`;
         await speak(msg);
@@ -199,9 +200,9 @@ startDTMFDecoder((code) => {
             clearInterval(doorAlertTimer);
             doorAlertTimer = null;
           }
-          if (voltageAlertTimer) {
-            clearInterval(voltageAlertTimer);
-            voltageAlertTimer = null;
+          if (acVoltageAlertTimer) {
+            clearInterval(acVoltageAlertTimer);
+            acVoltageAlertTimer = null;
           }
 
           alertsEnabled = !alertsEnabled;

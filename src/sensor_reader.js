@@ -36,8 +36,8 @@ watchdogIn.on("alert", (level, tick) => {
 });
 
 
-const BATTERY_CHANNEL = 0;
-const AC_CHANNEL = 1;
+const AC_CHANNEL = 0;
+const BATTERY_CHANNEL = 1;
 const chip = 1; // 1 = ADS1115, 0 = ADS1015
 const adc = new Ads1x15(chip);
 
@@ -104,8 +104,6 @@ async function readVoltage(channel, dividerRatio = 3.7, samples = 10) {
   }
 }
 
-
-
 function convertCelsiusToFahrenheit(celsius) {
   return (celsius * 9 / 5) + 32;
 }
@@ -132,9 +130,9 @@ async function readSensors() {
   const tempData = await readDHT();
   const door = doorPin.digitalRead();
 
-  let batteryVoltage = parseFloat(await readVoltage(BATTERY_CHANNEL, 4.096, 20)).toFixed(1);
+  let batteryVoltage = parseFloat(await readVoltage(BATTERY_CHANNEL, 4.922, 20)).toFixed(1);
   // console.log('batteryVoltage ', batteryVoltage);
-  let acVoltage = Math.floor(await readVoltage(AC_CHANNEL, 44.0, 20)).toFixed(0);
+  let acVoltage = Math.floor(await readVoltage(AC_CHANNEL, 35.88, 20)).toFixed(0);
   // console.log('acVoltage ', acVoltage);
 
   // if (count > 10) {
