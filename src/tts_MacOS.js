@@ -1,5 +1,55 @@
 // tts.js
-import { exec } from "child_process";
+
+import { spawn } from "child_process";
+import { FifoQueue } from './classes/fifo.js'; // Import the new event queue class
+
+const ttsQueue = new FifoQueue(); // Create an instance of the event queue.
+let idTimer = null;
+const REPEATER_ID = "K7ID, controller";
+
+// Only speak ID every 10 minutes.
+async function sendID(extra = '.') {
+  if (!idTimer) {
+    // Instead of directly calling innerSpeak, enqueue the message
+    ttsQueue.enqueue({ content: REPEATER_ID + extra });
+    idTimer = setTimeout(async () => {
+      console.log('10 minute timer completed.');
+      idTimer = null;
+    }, 1000 * 60 * 1); // 10 minutes
+  }
+}
+
+export async function speak(text) {
+  await sendID();
+  // Enqueue the message when speak is called
+  ttsQueue.enqueue({ content: text }, innerSpeak);
+}
+
+async function innerSpeak(message) {
+  return new Promise((resolve, reject) => {
+    const text = message;
+    console.log(`innerSpeak text: ${text}`);
+    if (!text) return resolve();
+    try {
+      console.log(`Speaking: ${text}`);
+
+      const tts = spawn("say");
+      tts.stdin.write(text);
+      tts.stdin.end();
+
+      tts.on('close', (code) => {
+        resolve(code === 0);
+      });
+
+      tts.on('error', reject);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+
+
 
 /**
  * Converts text to speech.
@@ -7,33 +57,33 @@ import { exec } from "child_process";
  * @param {string} [voice=undefined] - The voice to use (e.g., "Zarvox", "Karen"). If undefined, the default voice will be used.
  * @returns {Promise<void>} A Promise that resolves when the speech has finished.
  */
-function speak(text, voice) {
-  return new Promise((resolve, reject) => {
-    let command = `say "${text}"`; // Basic command
+// function speak(text, voice) {
+//   return new Promise((resolve, reject) => {
+//     let command = `say "${text}"`; // Basic command
 
-    if (voice) {
-      command += ` -v "${voice}"`; // Add voice option if specified
-    }
+//     if (voice) {
+//       command += ` -v "${voice}"`; // Add voice option if specified
+//     }
 
-    // You can also add an option to save to a file if needed:
-    // const outputFile = `/tmp/speech-${Date.now()}.aiff`; 
-    // command += ` -o "${outputFile}"`;
+//     // You can also add an option to save to a file if needed:
+//     // const outputFile = `/tmp/speech-${Date.now()}.aiff`; 
+//     // command += ` -o "${outputFile}"`;
 
-    exec(command, (error, stdout, stderr) => { // Use exec to run the command
-      if (error) {
-        console.error(`Error executing 'say' command: ${error.message}`);
-        reject(error); // Reject the Promise on error
-        return;
-      }
-      if (stderr) { // Check for stderr which may indicate warnings or errors
-        console.warn(`'say' command stderr: ${stderr}`); // Log warnings or errors if necessary
-      }
-      console.log(`'say' command stdout: ${stdout}`); // Log output if necessary
-      console.log(`Finished speaking: "${text}"`);
-      resolve();
-    });
-  });
-}
+//     exec(command, (error, stdout, stderr) => { // Use exec to run the command
+//       if (error) {
+//         console.error(`Error executing 'say' command: ${error.message}`);
+//         reject(error); // Reject the Promise on error
+//         return;
+//       }
+//       if (stderr) { // Check for stderr which may indicate warnings or errors
+//         console.warn(`'say' command stderr: ${stderr}`); // Log warnings or errors if necessary
+//       }
+//       console.log(`'say' command stdout: ${stdout}`); // Log output if necessary
+//       console.log(`Finished speaking: "${text}"`);
+//       resolve();
+//     });
+//   });
+// }
 
 // Check if the script is being run directly from the command line
 if (process.argv[1] === import.meta.filename) { // import.meta.filename is the ES Module equivalent of __filename

@@ -1,38 +1,48 @@
 export class FifoQueue {
   constructor() {
     this.queue = [];
-    this.processing = false; // Flag to ensure only one message is processed at a time
+    this.isProcessing = false; // To prevent multiple concurrent processAll calls
   }
 
-  // Add a message to the end of the queue
-  enqueue(message) {
-    this.queue.push(message);
-    this.processNext(); // Attempt to process if not already processing
+  /**
+   * Adds an item to the end of the queue.
+   * @param {*} item The item to add to the queue.
+   */
+  enqueue(item, processor) {
+    this.queue.push(item);
+    console.log(`Enqueued: ${item}. Current queue size: ${this.queue.length}`);
+    if (processor) {
+      this.processAll(processor)
+    }
   }
 
-  // Process the next message in the queue
-  async processNext(asyncCallback) {
-    if (this.processing || this.queue.length === 0) {
-      console.log(`processNext: processing ${this.processing}, length: ${this.queue.length}`);
-      return; // Already processing or queue is empty
+  /**
+   * Processes all items in the queue asynchronously.
+   * Each item is processed in order (FIFO).
+   */
+  async processAll(processor) {
+    if (this.isProcessing) {
+      console.log("Queue is already processing. Skipping new processAll call.");
+      return;
     }
 
-    this.processing = true;
-    const message = this.queue.shift(); // Get the first message
-    this.processing = false;
+    this.isProcessing = true;
+    console.log("Starting queue processing...");
 
-    console.log(`Processing message .: ${message.content}`);
+    while (this.queue.length > 0) {
+      const item = this.queue.shift(); // Remove the first item
+      console.log(`Processing: ${item}`);
 
-    await asyncCallback(message);
+      try {
+        // Simulate an asynchronous task (e.g., API call, database operation)
+        await processor(item.content);
+        console.log(`Finished processing: ${item}`);
+      } catch (error) {
+        console.error(`Error processing ${item}: ${error}`);
+      }
+    }
 
-    console.log(`Finished processing: ${message.content}`);
-
-    this.processing = false;
-    // this.processNext(asyncCallback); // Process the next message if available
-  }
-
-  // Check if the queue is empty
-  isEmpty() {
-    return this.queue.length === 0;
+    this.isProcessing = false;
+    console.log("Finished queue processing.");
   }
 }

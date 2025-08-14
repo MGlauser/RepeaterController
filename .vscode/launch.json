@@ -5,6 +5,22 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Launch On MacOS",
+      "program": "${workspaceFolder}/src/tts_MacOS.js",
+      "request": "launch",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run-script",
+        "test",
+        "Hello, sweetie",
+        "Tessa" // voice as arg[3]
+      ],
+      "type": "node"
+    },
+    {
       "name": "tts",
       "request": "launch",
       "runtimeArgs": [

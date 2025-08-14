@@ -1,9 +1,9 @@
 // tts.js
 import { Gpio } from "pigpio";
 import { execSync, spawn } from "child_process";
-import { FifoEventQueue } from './classes/fifoEventQueue.js'; // Import the new event queue class
+import { FifoQueue } from './classes/fifo.js'; // Import the new event queue class
 
-const ttsQueue = new FifoEventQueue(); // Create an instance of the event queue.
+const ttsQueue = new FifoQueue(); // Create an instance of the event queue.
 
 const REPEATER_ID = "K7ID, controller";
 let idTimer = null;
@@ -41,7 +41,7 @@ const audioCommand = `(Parameter.set 'Audio_Command "aplay -D plughw:CARD=\\\"${
 async function sendID(extra = '.') {
   if (!idTimer) {
     // Instead of directly calling innerSpeak, enqueue the message
-    ttsQueue.enqueueMessage({ content: REPEATER_ID + extra });
+    ttsQueue.enqueue({ content: REPEATER_ID + extra });
     idTimer = setTimeout(async () => {
       console.log('10 minute timer completed.');
       idTimer = null;
@@ -52,7 +52,7 @@ async function sendID(extra = '.') {
 export async function speak(text) {
   await sendID();
   // Enqueue the message when speak is called
-  ttsQueue.enqueueMessage({ content: text });
+  ttsQueue.enqueue({ content: text }, innerSpeak);
 }
 
 async function innerSpeak(message) {
