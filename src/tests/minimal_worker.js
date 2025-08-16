@@ -2,7 +2,7 @@
 import { getRandomAffirmation } from "../affirmation.js";
 import { Gpio } from "pigpio";
 import { initADC, readSensors } from "../sensor_reader.js";
-import { speak } from "../tts.js";
+import { isProcessing, key_command, speak } from "../tts.js";
 import { startDTMFDecoder, stopDTMFDecoder } from '../dtmf_decoder.js';
 
 let alertsEnabled = true; // Set to false to disable alerts
@@ -31,17 +31,9 @@ function logAlert(msg) {
   console.log(`[ALERT] ${msg}`);
 }
 
-// Sample DTMF code table
-const dtmfLookup = {
-  4200: "AFFIRMATION",
-  4201: "ALERT_ON",
-  4202: "ALERT_OFF",
-  4223: "RESET_REPEATER",
-  4220: "REPEATER_LOW",
-  4221: "REPEATER_HIGH",
-  4111: "STATUS",
-  9999: "EXIT" // this RESTARTS the application because PM2 keeps it alive.
-};
+// DTMF codes now in .env file so not in REPO!
+const dtmfLookup = JSON.parse(process.env.TTS_CODES || "{}");
+console.log(JSON.stringify(dtmfLookup, null, 2));
 
 async function pollSensors() {
   try {
@@ -216,6 +208,37 @@ startDTMFDecoder((code) => {
       break;
 
 
+    case "PTT_ON":
+      (async () => {
+        await speak("PTT ON");
+        do {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } while (isProcessing());
+        key_command(action);
+      })();
+      break;
+
+    case "PTT_ON_TIMED":
+      (async () => {
+        await speak("PTT ON Timed");
+        do {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } while (isProcessing());
+        key_command(action);
+      })();
+      break;
+
+    case "PTT_OFF":
+      (async () => {
+        await speak("PTT OFF");
+        do {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } while (isProcessing());
+        key_command(action);
+      })();
+
+      break;
+
     // MUST BE LAST case statement before default.  No break.
     case 'EXIT':
       // not strictly necessary, but good housekeeping practice.
@@ -237,7 +260,7 @@ startDTMFDecoder((code) => {
 
 // Send a random affirmation once at startup
 (async () => {
-  
+
   await speak(getRandomAffirmation());
   await pollSensors(); // set initial values
 

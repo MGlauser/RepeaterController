@@ -6,9 +6,12 @@ import { FifoQueue } from './classes/fifo.js'; // Import the new event queue cla
 const ttsQueue = new FifoQueue(); // Create an instance of the event queue.
 
 const REPEATER_ID = "K7ID, controller";
+const KEY=0;
+const UNKEY=1;
 let idTimer = null;
+let keyTimer = null;
 const txKey = new Gpio(22, { mode: Gpio.OUTPUT });
-txKey.digitalWrite(1); // Start unkeyed
+txKey.digitalWrite(UNKEY); // Start unkeyed
 
 function getAlsaDeviceInfo(preferredName = 'AB13X USB Audio') {
   try {
@@ -37,6 +40,10 @@ if (!deviceInfo) {
 const { cardName, devNum } = deviceInfo;
 const audioCommand = `(Parameter.set 'Audio_Command "aplay -D plughw:CARD=\\\"${cardName}\\\",DEV=${devNum} -c 1 -t raw -f s16 -r 32000 $FILE")\n`;
 
+export function isProcessing() {
+  return ttsQueue.isProcessing;
+}
+
 // Only speak ID every 10 minutes.
 async function sendID(extra = '.') {
   if (!idTimer) {
@@ -63,7 +70,7 @@ async function innerSpeak(message) {
     try {
       console.log('PTT-ON');
       console.log(`Speaking: ${text}`);
-      txKey.digitalWrite(0);
+      txKey.digitalWrite(KEY);
 
       const tts = spawn('festival', ['--pipe']);
       tts.stdin.write(audioCommand);
@@ -71,7 +78,7 @@ async function innerSpeak(message) {
       tts.stdin.end();
 
       tts.on('close', (code) => {
-        txKey.digitalWrite(1);
+        txKey.digitalWrite(UNKEY);
         console.log('PTT-OFF');
         resolve(code === 0);
       });
@@ -83,3 +90,33 @@ async function innerSpeak(message) {
   });
 }
 
+export function key_command(command) {
+  let KEY_TIMER_TIME = 1000 * 60 * 10; // default to 10 minutes
+  console.log(`key_command() command: ${command}`);
+  switch (command) {
+    case "PTT_ON_TIMED":
+      KEY_TIMER_TIME = 1000 * 60 * 2; // On for 2 minutes
+      // NO BREAK!
+
+    case "PTT_ON":
+      sendID();
+      txKey.digitalWrite(KEY);
+      if (keyTimer){
+        clearInterval(keyTimer);
+        keyTimer = null;
+      }
+
+      keyTimer = setTimeout(() => {
+        txKey.digitalWrite(UNKEY);
+      }, KEY_TIMER_TIME) // 10 minutes max
+      break;
+
+    // case "PTT_OFF":  PTT_OFF is the default.
+    default:
+      if (keyTimer){
+        clearInterval(keyTimer);
+        keyTimer = null;
+      }
+      txKey.digitalWrite(UNKEY);      
+  }
+}

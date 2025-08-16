@@ -7,7 +7,7 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node src/tests/minimal_worker.js",
+    "start": "node --env-file=src/config/.env src/tests/minimal_worker.js",
     "test": "node src/tts_MacOS.js"
 
   },
