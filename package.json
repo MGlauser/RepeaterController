@@ -7,9 +7,8 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node --env-file=src/config/.env src/tests/minimal_worker.js",
+    "start": "node --env-file=src/config/.env src/main.js",
     "test": "node src/tts_MacOS.js"
-
   },
   "dependencies": {
     "ads1x15": "^1.2.0",

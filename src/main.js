@@ -1,264 +1,280 @@
 // main.js
-import { fileURLToPath } from "url";
-import { Gpio } from "onoff";
-import { Worker } from "worker_threads";
-import express from "express";
-import fs from "fs";
-import path from "path";
+import { getRandomAffirmation } from "./affirmation.js";
+import { Gpio } from "pigpio";
+import { initADC, readSensors } from "./sensor_reader.js";
+import { isProcessing, key_command, speak } from "./tts.js";
+import { startDTMFDecoder, stopDTMFDecoder } from './dtmf_decoder.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const app = express();
-const port = 3000;
-
-// Sample DTMF code table
-const dtmfLookup = {
-  4200: "AFFIRMATION",
-  4201: "ALERT_ON",
-  4202: "ALERT_OFF",
-  4223: "RESET_REPEATER",
-  4220: "REPEATER_LOW",
-  4221: "REPEATER_HIGH",
-  4299: "SILENCE!",
-  4411: "STATUS",
-};
-
-const affirmationWorker = new Worker(path.join(__dirname, './affirmation.js'));
-const sensorWorker = new Worker(path.join(__dirname, "./sensor_reader.js"));
-const ttsWorker = new Worker(path.join(__dirname, "./tts.js"));
-const dtmfWorker = new Worker(path.join(__dirname, "./dtmf_decoder.js"));
-
-// Sensor data store
-let sensorData = {};
-let alertsEnabled = false;
-
-let lastDoorState = null;
-let lastVoltageAlert = false;
-
+let alertsEnabled = true; // Set to false to disable alerts
 let doorAlertActive = false;
-let voltageAlertActive = false;
-
 let doorAlertTimer = null;
-let voltageAlertTimer = null;
+let pollTimer = null;
+let lastDoorState = null;
+let sensorData = {};
+let acVoltageAlertActive = false;
+let dcVoltageAlertActive = false;
+let acVoltageAlertTimer = null;
+let dcVoltageAlertTimer = null;
 
-const VOLTAGE_LOW = 105;
-const VOLTAGE_HIGH = 125;
+const AC_VOLTAGE_LOW = 100;
+const AC_VOLTAGE_HIGH = 128;
+const DC_VOLTAGE_LOW = 11.0;
+const DC_VOLTAGE_HIGH = 14.8;
+const ALERT_REPEAT_MS = 1000 * 60 * 30; // 30 minutes
+const REPEATER_RESET_TIMEOUT = 1000 * 60 * 2; // 2 minute timer.
 
-const ALERT_REPEAT_MS = 30 * 60 * 1000; // 30 minutes
+const TX_DELAY = 1000; // ms to wait after speaking to do something else.
 
-affirmationWorker.on('message', (affirmation) => {
-  console.log('Received affirmation:', affirmation);
-  ttsWorker.postMessage(affirmation);
-});
+const repeaterPin = new Gpio(25, { mode: Gpio.OUTPUT });
 
-affirmationWorker.on('error', (err) => {
-  console.error('Worker error:', err);
-});
+function logAlert(msg) {
+  console.log(`[ALERT] ${msg}`);
+}
 
-affirmationWorker.on('exit', (code) => {
-  if (code !== 0) {
-    console.error(`Worker stopped with exit code ${code}`);
-  }
-});
+// DTMF codes now in .env file so not in REPO!
+const dtmfLookup = JSON.parse(process.env.TTS_CODES || "{}");
+console.log(JSON.stringify(dtmfLookup, null, 2));
 
+async function pollSensors() {
+  try {
+    await initADC(); // can be called as many times as you wish.  It knows if it's already been called.
+    const data = await readSensors();
+    sensorData = data;
+    // console.log("Sensor Data:", data);
 
-dtmfWorker.on("message", (dtmfCode) => {
-  console.log("Received DTMF code from worker:", dtmfCode);
-  handleDTMF(dtmfCode);
-});
-
-dtmfWorker.on("error", (error) => {
-  console.error("DTMF worker encountered an error:", error);
-});
-
-dtmfWorker.on("exit", (code) => {
-  if (code !== 0) {
-    console.error(`DTMF worker stopped with exit code ${code}`);
-  }
-});
-
-sensorWorker.on("message", (data) => {
-  sensorData = data;
-
-  if (alertsEnabled) {
-    // Door alert management
     if (alertsEnabled) {
-      const doorOpened = lastDoorState === false && data.door === true;
-      const doorClosed = lastDoorState === true && data.door === false;
+      // Door alert logic
+      const doorOpened = lastDoorState === 0 && data.door === 1;
+      const doorClosed = lastDoorState === 1 && data.door === 0;
 
-      if (doorOpened) {
-        if (!doorAlertActive) {
-          ttsWorker.postMessage("Alert. Intrusion detected at shack door.");
-          logAlert("DOOR OPENED - ALERT TRIGGERED");
-          doorAlertActive = true;
-
-          doorAlertTimer = setInterval(() => {
-            ttsWorker.postMessage(
-              "Repeat alert. Intrusion detected at shack door."
-            );
-            logAlert("DOOR ALERT REPEATED");
-          }, ALERT_REPEAT_MS);
-        }
+      if (doorOpened && !doorAlertActive) {
+        doorAlertActive = true;
+        await speak("Alert. Intrusion detected at shack door.");
+        logAlert("DOOR OPENED - ALERT TRIGGERED");
+        doorAlertTimer = setInterval(async () => {
+          await speak("Repeating alert. Intrusion detected at shack door.");
+          logAlert("DOOR ALERT REPEATED");
+        }, ALERT_REPEAT_MS);
       }
 
       if (doorClosed && doorAlertActive) {
-        // Reset the flag so we can trigger again on the next open
         doorAlertActive = false;
         if (doorAlertTimer) {
           clearInterval(doorAlertTimer);
           doorAlertTimer = null;
         }
         logAlert("DOOR CLOSED - ALERT CLEARED");
+        await speak("Shack door closed.");
       }
 
       lastDoorState = data.door;
-    }
 
-    // --- Voltage Alert ---
-    const voltageAbnormal =
-      data.voltage < VOLTAGE_LOW || data.voltage > VOLTAGE_HIGH;
+      // AC Voltage alert logic
+      const acVoltageAbnormal =
+        data.acVoltage < AC_VOLTAGE_LOW || data.acVoltage > AC_VOLTAGE_HIGH;
 
-    if (voltageAbnormal && !voltageAlertActive) {
-      ttsWorker.postMessage("Warning. Line voltage abnormal.");
-      logAlert(`VOLTAGE ALERT TRIGGERED: ${data.voltage}V`);
-      voltageAlertActive = true;
-
-      voltageAlertTimer = setInterval(() => {
-        ttsWorker.postMessage("Repeat warning. Line voltage abnormal.");
-        logAlert(`VOLTAGE ALERT REPEATED: ${data.voltage}V`);
-      }, ALERT_REPEAT_MS);
-    }
-
-    if (!voltageAbnormal && voltageAlertActive) {
-      voltageAlertActive = false;
-      if (voltageAlertTimer) {
-        clearInterval(voltageAlertTimer);
-        voltageAlertTimer = null;
+      if (acVoltageAbnormal && !acVoltageAlertActive) {
+        await speak(`Warning. Line voltage abnormal.`);
+        logAlert(`Line VOLTAGE ALERT TRIGGERED: ${data.acVoltage} Volts`);
+        acVoltageAlertActive = true;
+        acVoltageAlertTimer = setInterval(async () => {
+          await speak(`Repeat warning. Line voltage abnormal. ${data.acVoltage} Volts`);
+          logAlert(`Line VOLTAGE ALERT REPEATED: ${data.acVoltage} Volts`);
+        }, ALERT_REPEAT_MS);
       }
-      logAlert(`VOLTAGE NORMALIZED: ${data.voltage}V - ALERT CLEARED`);
+
+      if (!acVoltageAbnormal && acVoltageAlertActive) {
+        acVoltageAlertActive = false;
+        if (acVoltageAlertTimer) {
+          clearInterval(acVoltageAlertTimer);
+          acVoltageAlertTimer = null;
+        }
+        const msg = `Line VOLTAGE NORMALIZED: ${data.acVoltage} Volts - ALERT CLEARED`;
+        await speak(msg);
+        logAlert(msg);
+      }
+
+      // DC Voltage alert logic
+      const dcVoltageAbnormal =
+        data.batteryVoltage < DC_VOLTAGE_LOW || data.batteryVoltage > DC_VOLTAGE_HIGH;
+      if (dcVoltageAbnormal && !dcVoltageAlertActive) {
+        dcVoltageAlertActive = true;
+        await speak(`Warning. Battery voltage abnormal.`);
+        logAlert(`Battery VOLTAGE ALERT TRIGGERED: ${data.batteryVoltage} Volts`);
+        dcVoltageAlertTimer = setInterval(async () => {
+          await speak("Repeat warning. Battery voltage abnormal.");
+          const msg = `Battery VOLTAGE ALERT REPEATED: ${data.batteryVoltage} Volts`
+          await speak(msg);
+          logAlert(msg);
+        }, ALERT_REPEAT_MS);
+      }
+
+      if (!dcVoltageAbnormal && dcVoltageAlertActive) {
+        dcVoltageAlertActive = false;
+        if (dcVoltageAlertTimer) {
+          clearInterval(dcVoltageAlertTimer);
+          dcVoltageAlertTimer = null;
+        }
+        const msg = `BATTERY VOLTAGE NORMALIZED: ${data.batteryVoltage} Volts - ALERT CLEARED`;
+        await speak(msg);
+        logAlert(msg);
+      }
+
+
     }
+  } catch (err) {
+    console.error("Sensor polling error:", err);
   }
-});
+}
 
-ttsWorker.on("error", (err) => console.error("TTS Worker Error:", err));
-sensorWorker.on("error", (err) => console.error("Sensor Worker Error:", err));
-
-
-// Start DTMF decode loop
-function handleDTMF(code) {
+startDTMFDecoder((code) => {
   const action = dtmfLookup[code];
-  console.log(`Received DTMF code: ${code} => ${action}`);
-
+  console.log('DTMF Code received:', action);
   switch (action) {
-    case "AFFIRMATION":
-      let text = "Hello handsome";
-      // lookup a random affirmation and replace default.
-      affirmationWorker.postMessage('Ignored');
+    case 'AFFIRMATION':
+      setTimeout(async () => {
+        await speak(getRandomAffirmation());
+      }, TX_DELAY)
       break;
+
+    case "RESET_REPEATER":
+      setTimeout(async () => {
+        repeaterPin.digitalWrite(1);
+        await speak("Resetting repeater.");
+        setTimeout(() => repeaterPin.digitalWrite(0), REPEATER_RESET_TIMEOUT);
+      }, TX_DELAY);
+      break;
+
+    case "REPEATER_LOW":
+      setTimeout(async () => {
+        repeaterPin.digitalWrite(0);
+        await speak("Repeater pin pulled low.");
+      }, TX_DELAY);
+      break;
+
+    case "REPEATER_HIGH":
+      setTimeout(async () => {
+        repeaterPin.digitalWrite(1);
+        await speak("Repeater pin set high.");
+      }, TX_DELAY);
+      break;
+
+    case "STATUS": {
+      setTimeout(async () => {
+        const status = `Alerts ${alertsEnabled ? 'enabled' : 'disabled'
+
+          }, Door is ${sensorData.door ? "open" : "closed"
+          }, temperature is ${sensorData.temp
+          } degrees, line is ${sensorData.acVoltage} volts, battery is ${sensorData.batteryVoltage} volts.`;
+        await speak(status);
+      }, TX_DELAY);
+      break;
+    }
+
 
     case "ALERT_ON":
       alertsEnabled = true;
-      ttsWorker.postMessage("Alerts have been enabled.");
+      setTimeout(async () => {
+        await speak("Alerts have been enabled.");
+      }, TX_DELAY);
       break;
 
     case "ALERT_OFF":
       alertsEnabled = false;
-      ttsWorker.postMessage("Alerts have been disabled.");
-      break;
+      setTimeout(async () => {
+        await speak("Alerts have been disabled.");
 
-    case "STATUS": {
-      const status = `Door is ${
-        sensorData.door ? "open" : "closed"
-      }, temperature is ${
-        sensorData.temp
-      } degrees Celsius, and line voltage is ${sensorData.voltage} volts.`;
-      ttsWorker.postMessage(status);
-      break;
-    }
+        if (doorAlertActive || acVoltageAlertActive || dcVoltageAlertActive) {
+          await speak("Alerts acknowledged. Shutting up.");
+          logAlert("DTMF 'SILIENCE!' RECEIVED: ALERTS ACKNOWLEDGED");
 
-    case "RESET_REPEATER":
-      ttsWorker.postMessage("Resetting repeater.");
-      repeaterPin.digitalWrite(0);
-      setTimeout(() => repeaterPin.digitalWrite(1), 5000);
-      break;
+          if (doorAlertTimer) {
+            clearInterval(doorAlertTimer);
+            doorAlertTimer = null;
+          }
+          if (acVoltageAlertTimer) {
+            clearInterval(acVoltageAlertTimer);
+            acVoltageAlertTimer = null;
+          }
 
-    case "REPEATER_LOW":
-      repeaterPin.digitalWrite(0);
-      ttsWorker.postMessage("Repeater pin pulled low.");
-      break;
-
-    case "REPEATER_HIGH":
-      repeaterPin.digitalWrite(1);
-      ttsWorker.postMessage("Repeater pin set high.");
-      break;
-
-    case "SILENCE!": // Acknowledge Alerts
-      if (doorAlertActive || voltageAlertActive) {
-        ttsWorker.postMessage("Alerts acknowledged.");
-        logAlert("DTMF 'SILIENCE!' RECEIVED: ALERTS ACKNOWLEDGED");
-
-        if (doorAlertTimer) {
-          clearInterval(doorAlertTimer);
-          doorAlertTimer = null;
+          alertsEnabled = !alertsEnabled;
+          doorAlertActive = false;
+          acVoltageAlertActive = false;
+          dcVoltageAlertActive = false;
+        } else {
+          await speak("No active alerts to acknowledge.");
         }
-        if (voltageAlertTimer) {
-          clearInterval(voltageAlertTimer);
-          voltageAlertTimer = null;
-        }
-
-        doorAlertActive = false;
-        voltageAlertActive = false;
-      } else {
-        ttsWorker.postMessage("No active alerts to acknowledge.");
-      }
+      }, TX_DELAY);
       break;
+
+
+    case "PTT_ON":
+      (async () => {
+        await speak("PTT ON");
+        do {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } while (isProcessing());
+        key_command(action);
+      })();
+      break;
+
+    case "PTT_ON_TIMED":
+      (async () => {
+        await speak("PTT ON Timed");
+        do {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } while (isProcessing());
+        key_command(action);
+      })();
+      break;
+
+    case "PTT_OFF":
+      (async () => {
+        await speak("PTT OFF");
+        do {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } while (isProcessing());
+        key_command(action);
+      })();
+
+      break;
+
+    // MUST BE LAST case statement before default.  No break.
+    case 'EXIT':
+      // not strictly necessary, but good housekeeping practice.
+      clearInterval(doorAlertTimer);
+      clearInterval(pollTimer);
+      doorAlertTimer = null;
+      pollTimer = null;
+
+      process.exit(0);
 
     default:
-      console.log("Unknown or unsupported DTMF code");
+      setTimeout(async () => {
+        await speak(`${code} is not assigned.`);
+      }, TX_DELAY);
   }
-};
-
-// Expose sensor data and test interface
-app.get("/api/sensors", (req, res) => res.json(sensorData));
-app.get("/api/test-speech", (req, res) => {
-  ttsWorker.postMessage("Repeater system is online.");
-  res.send("Test speech sent.");
 });
 
-// GET alert log
-app.get("/api/alerts", (req, res) => {
-  const logFile = path.join(__dirname, "alerts.log");
-  fs.readFile(logFile, "utf8", (err, data) => {
-    if (err) {
-      res.status(500).json({ error: "Unable to read alert log." });
-    } else {
-      res.json({ log: data });
-    }
-  });
-});
-
-app.post("/api/alerts/acknowledge", (req, res) => {
-  // Send message to handle DTMF '4299' code (acknowledge alerts)
-  this.handleDTMF("4299");
-
-  res.json({ message: "Alerts acknowledged" });
-});
-
-// Serve Angular frontend (static)
-app.use(express.static(path.join(__dirname, "public")));
-
-const repeaterPin = new Gpio(25, { mode: Gpio.OUTPUT });
-
-function logAlert(message) {
-  const timestamp = new Date().toISOString();
-  const line = `[${timestamp}] ${message}\n`;
-  fs.appendFile(path.join(__dirname, "alerts.log"), line, (err) => {
-    if (err) console.error("Failed to write to log:", err);
-  });
-}
 
 
-app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
-});
+// Send a random affirmation once at startup
+(async () => {
+
+  await speak(getRandomAffirmation());
+  await pollSensors(); // set initial values
+
+  // transmit these initial values when starting up.
+  setTimeout(async () => {
+    const status = `Door is ${sensorData.door ? "open" : "closed"
+      }, temperature is ${sensorData.temp
+      } degrees, line is ${sensorData.acVoltage} volts, battery is ${sensorData.batteryVoltage} volts.`;
+    await speak(status);
+
+    pollTimer = setInterval(async () => {
+      await pollSensors();
+    }, 3000);
+  }, TX_DELAY);
+
+
+})();
