@@ -1,4 +1,5 @@
 // main.js
+// DO NOT USE THIS FILE.
 import { fileURLToPath } from "url";
 import { Gpio } from "onoff";
 import { Worker } from "worker_threads";
